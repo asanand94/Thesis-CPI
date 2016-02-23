@@ -34,25 +34,27 @@ def dThetaDt(thetaVec, unused_t):
     
 # Define residual function
 def residual(alpha):
-	return rhs - np.dot(hermitePoly, alpha)
+    return rhs - np.dot(hermitePoly, alpha)
 
-#fine variable calculation	
+#fine variable calculation    
 def fineVariables(initial, tmin, tmax, nsteps):
-	dt = (tmax-tmin)/nsteps
-	times = np.arange(tmin,tmax,dt)
-	return	  odeint(
-					 dThetaDt,
-					 initial,
-					 times
-					 )
-#coarse function	
+    dt = (tmax-tmin)/nsteps
+    times = np.arange(tmin,tmax,dt)
+    out =      odeint(
+                     dThetaDt,
+                     initial,
+                     times
+                     )
+    return out
+
+#coarse function    
 def coarseIntegrate(initial, dadt, tStep):
-	states = np.empty((initial.size,2))
-	print states.shape
-	states[0,:] = initial[0,:]
-	tSteps = np.empty(range(initial.size)); tSteps.fill(tStep)
-	states[1,:] = initial[0,:] + dadt[0,:]*tSteps[0,:]
-	return states
+    states = np.empty((initial.size,2))
+    print states.shape
+    states[0,:] = initial[0,:]
+    tSteps = np.empty(range(initial.size)); tSteps.fill(tStep)
+    states[1,:] = initial[0,:] + dadt[0,:]*tSteps[0,:]
+    return states
 
 theta0 = np.random.rand(n) * 3.1415 #initial distribution of theta
 
@@ -80,52 +82,52 @@ alphas = np.zeros((nHermite,nsteps)) #Empty vector to store the fine alphas for 
 initialIterate = np.zeros((nHermite,1))# Empty initial vector for alpha values of given time step
 
 
-	
-#Loop for CPI		 
+    
+#Loop for CPI         
 for i in range(1):
-	
-	#begin by calculating fine variable (theta) for a short burst of time
-	history = fineVariables(theta0, initialT, initialT+smallTstep, nsteps)
-	allTheta = np.transpose(history)
-	theta0 = allTheta[:,nsteps-1]
+    
+    #begin by calculating fine variable (theta) for a short burst of time
+    history = fineVariables(theta0, initialT, initialT+smallTstep, nsteps)
+    allTheta = np.transpose(history)
+    theta0 = allTheta[:,nsteps-1]
 
-	#create loop to calculate the fine alpha values
-	for j in range(nsteps):
-	
-		rhs = theta0[:]
-		thetaMatrix = history.transpose()
-		
-		#use Least Squares to calculate the fine alphas
-		answer, return_code = leastsq(residual, initialIterate)
-	
-		# enter alpha values for given time step into matrix and then iterate again
-		alphas[0,j] = answer[0]
-		alphas[1,j] = answer[1]
-		alphas[2,j] = answer[2]
-		
-	#enter last two fine alphas into separate matrix	
-	fineAlphas = np.zeros((3,2))
-	fineAlphas[:,0] = alphas[:,nsteps*i-1]
-	fineAlphas[:,1] = alphas[:,nsteps*i-2]
-	
-	#create initial alpha vector for coarse integration
-	initialAlphas = np.zeros((3,1))
-	initialAlphas[:,0] = fineAlphas[:,0]
-	
-	#create array to calculate d(alpha)/dt to coarse grain
-	alphaDerivatives = np.zeros((3,1))
-	
-	#fill array with d(alpha)/dt values for each alphas
-	for k in range(3):
-		alphaDerivatives[k,0] = (fineAlphas[k,0]-fineAlphas[k,1])/smallTstep
-	
-	#send it to coarse function to approximate alphas at t+bigTstep
-	coarseIntegrate(initialAlphas, alphaDerivatives, bigTstep)
-	
+    #create loop to calculate the fine alpha values
+    for j in range(nsteps):
+    
+        rhs = theta0[:]
+        thetaMatrix = history.transpose()
+        
+        #use Least Squares to calculate the fine alphas
+        answer, return_code = leastsq(residual, initialIterate)
+    
+        # enter alpha values for given time step into matrix and then iterate again
+        alphas[0,j] = answer[0]
+        alphas[1,j] = answer[1]
+        alphas[2,j] = answer[2]
+        
+    #enter last two fine alphas into separate matrix    
+    fineAlphas = np.zeros((3,2))
+    fineAlphas[:,0] = alphas[:,nsteps*i-1]
+    fineAlphas[:,1] = alphas[:,nsteps*i-2]
+    
+    #create initial alpha vector for coarse integration
+    initialAlphas = np.zeros((3,1))
+    initialAlphas[:,0] = fineAlphas[:,0]
+    
+    #create array to calculate d(alpha)/dt to coarse grain
+    alphaDerivatives = np.zeros((3,1))
+    
+    #fill array with d(alpha)/dt values for each alphas
+    for k in range(3):
+        alphaDerivatives[k,0] = (fineAlphas[k,0]-fineAlphas[k,1])/smallTstep
+    
+    #send it to coarse function to approximate alphas at t+bigTstep
+    coarseIntegrate(initialAlphas, alphaDerivatives, bigTstep)
+    
 
-'''	
+'''    
 Euler Integration
-		                  
+                          
 def eulerIntegrate(initial, dxdt, tmin, tmax, nstep):
     nstep = int(nstep)
     states = np.empty((nstep, initial.size))
