@@ -9,6 +9,8 @@ import numpy as np
 from scipy.integrate import odeint
 from scipy.optimize import leastsq
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+
 n = 64  # Make a random "network".
 A = np.random.rand(n, n)
 p = .5
@@ -20,6 +22,7 @@ for i in range(n):
 
 # Make a gaussian natural frequency distribution and set the coupling strength.
 om = np.random.normal(0,.3,n)
+om.sort()  # This makes plotting easier, without actually affecting dynamics.
 K = 2.4
 
 #kuramoto oscillators
@@ -31,21 +34,17 @@ def dThetaDt(thetaVec, unused_t):
             sumsini += A[i,j] * np.sin(thetaVec[j] - thetaVec[i])
         out[i] = om[i] + K/n * sumsini
     return out
-    
-# Define residual function
-def residual(alpha):
-    return rhs - np.dot(hermitePoly, alpha)
+
 
 #fine variable calculation    
 def fineVariables(initial, tmin, tmax, nsteps):
     dt = (tmax-tmin)/nsteps
     times = np.arange(tmin,tmax,dt)
-    out =      odeint(
-                     dThetaDt,
-                     initial,
-                     times
-                     )
-    return out
+    return odeint(
+                  dThetaDt,
+                  initial,
+                  times
+                  )
 
 #coarse function    
 def coarseIntegrate(initial, dadt, tStep):
@@ -56,13 +55,15 @@ def coarseIntegrate(initial, dadt, tStep):
     states[1,:] = initial[0,:] + dadt[0,:]*tSteps[0,:]
     return states
 
-theta0 = np.random.rand(n) * 3.1415 #initial distribution of theta
+# theta0 = np.random.rand(n) * 3.1415 #initial distribution of theta
+theta0 = np.zeros((n,))
 
 #define small and large time steps as well as number of fine steps taken
 smallTstep = .1 #total time we fine integrate for
 bigTstep = .1 #jump for the coarse integration
 initialT = 0
 nsteps = 5 #number of fine steps taken (dtSmall = smallTstep/nsteps)
+ncsteps = 12 #number of coarse steps taken
 nHermite = 3 #number of hermite Polynomials used
 
 
@@ -71,33 +72,38 @@ nHermite = 3 #number of hermite Polynomials used
 # Hermite polynomials, [H1(omega), H3(omega), H5(omega)]
 hermitePoly = np.zeros((n,nHermite))
 
-# Fill hermitePoly matrix with H1(omega) and H3(omega) values
+# Fill hermitePoly matrix with H0(omega), H2(omega), and H3(omega) values
 hermitePoly[:, 0] = (om).ravel()
 hermitePoly[:, 1] = (om ** 3 - 3 * om).ravel()
 hermitePoly[:, 2] = (om**5 - 10*(om**3)+15*om).ravel()
 
 
-alphas = np.zeros((nHermite,nsteps)) #Empty vector to store the fine alphas for each time step
-
-initialIterate = np.zeros((nHermite,1))# Empty initial vector for alpha values of given time step
-
+alphas = np.zeros((nHermite, nsteps)) #Empty vector to store the fine alphas for each time step
 
     
-#Loop for CPI         
-for i in range(1):
+#Loop for CPI
+totalThetaHistory = np.empty((n, ncsteps))
+totalAlphaHistory = np.empty((nHermite, ncsteps))
+times = []
+t = 0
+for i in range(ncsteps):
     
-    #begin by calculating fine variable (theta) for a short burst of time
+    # Creat a trajectory of the fine variable (theta) for a short burst of time.
     history = fineVariables(theta0, initialT, initialT+smallTstep, nsteps)
-    allTheta = np.transpose(history)
-    theta0 = allTheta[:,nsteps-1]
+    t += smallTstep  # Track time just for later plotting purposes.
 
-    #create loop to calculate the fine alpha values
+    # Calculate best-fit alpha values at each fine timestep
+    # (though we really only need the last two).
     for j in range(nsteps):
     
-        rhs = theta0[:]
-        thetaMatrix = history.transpose()
+        rhs = history[j, :]
+            
+        # Define residual function
+        def residual(alpha):
+            return rhs - np.dot(hermitePoly, alpha)
         
-        #use Least Squares to calculate the fine alphas
+        #use Least Squares to calculate the best-fit alphas (coarse variables).
+        initialIterate = np.zeros((nHermite, 1))# Empty initial vector for alpha values of given time step
         answer, return_code = leastsq(residual, initialIterate)
     
         # enter alpha values for given time step into matrix and then iterate again
@@ -105,25 +111,52 @@ for i in range(1):
         alphas[1,j] = answer[1]
         alphas[2,j] = answer[2]
         
-    #enter last two fine alphas into separate matrix    
-    fineAlphas = np.zeros((3,2))
-    fineAlphas[:,0] = alphas[:,nsteps*i-1]
-    fineAlphas[:,1] = alphas[:,nsteps*i-2]
+    # Extract the last two alpha vectors.
+    a1 = alphas[:, -2]
+    a2 = alphas[:, -1]
     
-    #create initial alpha vector for coarse integration
-    initialAlphas = np.zeros((3,1))
-    initialAlphas[:,0] = fineAlphas[:,0]
+    # Save the "current" state (at the end of the fine burst).
+    totalThetaHistory[:, i] = history[-1, :]
+    totalAlphaHistory[:, i] = a2
+    times.append(t)
+        
+    # Create array to calculate d(alpha)/dt to do coarse Euler integration.
+    alphaDerivatives = np.zeros((3,))
+    # Fill array with d(alpha)/dt values for each alphas.
+    alphaDerivatives[:] = (a2-a1)/smallTstep
+        
+    # Find next alpha by an Euler step.
+    nextAlpha = a2 + alphaDerivatives * bigTstep
+    t += bigTstep
     
-    #create array to calculate d(alpha)/dt to coarse grain
-    alphaDerivatives = np.zeros((3,1))
+    # Lift back to the fine fine (theta) space to resume the fine integration.
+    theta0 = np.dot(hermitePoly, nextAlpha)
     
-    #fill array with d(alpha)/dt values for each alphas
-    for k in range(3):
-        alphaDerivatives[k,0] = (fineAlphas[k,0]-fineAlphas[k,1])/smallTstep
+
+## Plot the theta and alpha histories.
+fig = plt.figure()
+colors = cm.hot(np.linspace(0, 1, ncsteps))
+
+ax = fig.add_subplot(2, 1, 1)
+ax.set_xlabel('$\omega_i(t)$')
+ax.set_ylabel(r'$\theta_i(t)$')  # The r'... (for "raw") is to prevent Python from interpreting \t as an escape code for a tab character.
+
+bx = fig.add_subplot(2, 1, 2)
+bx.set_xlabel('$t$')
+bx.set_ylabel(r'$\alpha_k(t)$')
+
+for i, c in zip(range(ncsteps), colors):
+    ax.scatter(om, totalThetaHistory[:, i], color=c)
+    ax.plot(om, totalThetaHistory[:, i], color='black')
+    bx.scatter([times[i]]*nHermite, totalAlphaHistory[:, i], color=c)
     
-    #send it to coarse function to approximate alphas at t+bigTstep
-    coarseIntegrate(initialAlphas, alphaDerivatives, bigTstep)
-    
+# Draw lines through coarse points.
+bx.plot(times, totalAlphaHistory.T, color='black')
+
+fig.suptitle('$t\in[%.2f, %.2f]$' % (times[0], times[-1]))
+
+# Show the plots.
+plt.show()
 
 '''    
 Euler Integration
