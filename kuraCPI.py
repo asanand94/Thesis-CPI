@@ -23,7 +23,7 @@ for i in range(n):
 # Make a gaussian natural frequency distribution and set the coupling strength.
 om = np.random.normal(0,.3,n)
 om.sort()  # This makes plotting easier, without actually affecting dynamics.
-K = 2.4
+K = 5.0
 
 #kuramoto oscillators
 def dThetaDt(thetaVec, unused_t):
@@ -63,7 +63,7 @@ smallTstep = .1 #total time we fine integrate for
 bigTstep = .1 #jump for the coarse integration
 initialT = 0
 nsteps = 5 #number of fine steps taken (dtSmall = smallTstep/nsteps)
-ncsteps = 12 #number of coarse steps taken
+ncsteps = 24 #number of coarse steps taken
 nHermite = 3 #number of hermite Polynomials used
 
 
